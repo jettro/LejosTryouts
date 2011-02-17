@@ -16,6 +16,8 @@ public class Shooter {
     private int leftZero, rightZero, leftTarget, rightTarget;
 
     public static void main(String[] args) {
+//        RConsole.open();
+
         Shooter shooter = new Shooter();
         shooter.goToStartPosition();
         TaskMovementMotors taskMovementMotors = new TaskMovementMotors(shooter);
@@ -23,6 +25,8 @@ public class Shooter {
         Delay.msDelay(5000);
         ReadAccelSensor accelSensor = new ReadAccelSensor(shooter);
         accelSensor.start();
+        ShootBall shootBall = new ShootBall();
+        shootBall.start();
     }
 
     public int getLeftTarget() {
@@ -57,7 +61,26 @@ public class Shooter {
         return rightZero;
     }
 
-    public static class ReadAccelSensor extends Thread {
+    private static class ShootBall extends Thread {
+        TouchSensor touchSensor = new TouchSensor(SensorPort.S1);
+
+        @Override
+        public void run() {
+            while (!Button.ESCAPE.isPressed()) {
+                if (touchSensor.isPressed()) {
+                    Motor.B.resetTachoCount();
+                    Motor.B.setSpeed(400);
+                    Motor.B.forward();
+                    int count = 0;
+                    while (count < 360) count = Motor.B.getTachoCount();
+                    Motor.B.stop();
+                }
+                Delay.msDelay(100);
+            }
+        }
+    }
+
+    private static class ReadAccelSensor extends Thread {
         private final Shooter shooter;
         private final TiltSensor accelSensor;
 
@@ -74,29 +97,28 @@ public class Shooter {
             int h, v;
             int eLT, eRT;
 
+            LCD.clearDisplay();
+            LCD.drawString(accelSensor.getProductID() + " " + accelSensor.getSensorType(), 0, 4);
+
             while (!Button.ESCAPE.isPressed()) {
                 x = accelSensor.getXTilt();
                 y = accelSensor.getYTilt();
                 z = accelSensor.getZTilt();
 
-                LCD.drawString("x : " + x, 0, 1);
-                LCD.drawString("y : " + y, 0, 2);
-                LCD.drawString("z : " + z, 0, 3);
+//                LCD.drawString("x|y|z - " + format(x) + "|" + format(y) + "|" + format(z), 0 , 1);
 
-                // Set Horizontal value (map 1 to 1 of y value)
-                h = y;
-                // Limit horizontal value
-                if (h > 100)
-                    h = 100;
-                if (h < -100)
-                    h = -100;
+                if (y > 199) {
+                    h = -2 * (y - 200);
+                } else {
+                    h = 2 * y;
+                }
 
                 // Set vertical value (map sensor z range 80 to -20 to range 0 to 100)
-                v = 60 - z;
-                if (v > 100)
-                    v = 100;
-                if (v < -0)
-                    v = 0;
+                if (z > 199) {
+                    v = z - 170;
+                } else {
+                    v = z - 20;
+                }
 
                 // Calc left and right target, do not do math directly with
                 // target variable as compiler may set transient values to variable
@@ -106,11 +128,18 @@ public class Shooter {
                 shooter.setLeftTarget(eLT);
                 shooter.setRightTarget(eRT);
 
-//                LCD.drawString("target h : " + h, 0, 1);
-//                LCD.drawString("target v : " + v, 0, 2);
+//                LCD.drawString("Target : " + format(eLT) + "|" + format(eRT), 0, 1);
 
                 Delay.msDelay(10);
             }
+        }
+
+        private String format(int z) {
+            String s = Integer.toString(z);
+            while (s.length() < 3 && s.charAt(0) != '-') {
+                s = "0" + s;
+            }
+            return s;
         }
 
     }
@@ -124,12 +153,14 @@ public class Shooter {
         private NXTRegulatedMotor leftMotor;
         private NXTRegulatedMotor rightMotor;
         private int leftZero, rightZero, leftTarget, rightTarget;
+        private Shooter shooter;
 
         public TaskMovementMotors(Shooter shooter) {
             this.leftMotor = shooter.getLeftMotor();
             this.rightMotor = shooter.getRightMotor();
             this.leftZero = shooter.getLeftZero();
             this.rightZero = shooter.getRightZero();
+            this.shooter = shooter;
         }
 
         @Override
@@ -137,10 +168,11 @@ public class Shooter {
             eLeft = leftMotor.getPosition() - leftZero;
             eRight = rightMotor.getPosition() - rightZero;
 
-            errLeft = leftTarget - eLeft;
+            errLeft = shooter.getLeftTarget() - eLeft;
             errRight = rightTarget - eRight;
 
             while (!Button.ESCAPE.isPressed()) {
+//                RConsole.print(errLeft + "|" + errRight + "|");
                 Delay.msDelay(PID_LOOP_WAIT);
                 errLeftPrev = errLeft;
                 errRightPrev = errRight;
@@ -148,8 +180,8 @@ public class Shooter {
                 eLeft = leftMotor.getPosition() - leftZero;
                 eRight = rightMotor.getPosition() - rightZero;
 
-                errLeft = leftTarget - eLeft;
-                errRight = rightTarget - eRight;
+                errLeft = shooter.getLeftTarget() - eLeft;
+                errRight = shooter.getRightTarget() - eRight;
 
                 pwrLeft = errLeft * PID_P + (errLeft - errLeftPrev) * PID_D;
                 pwrRight = errRight * PID_P + (errRight - errRightPrev) * PID_D;
@@ -159,11 +191,14 @@ public class Shooter {
                 if (pwrRight < -POWER_MAX) pwrRight = -POWER_MAX;
                 if (pwrRight > POWER_MAX) pwrRight = POWER_MAX;
 
+//                RConsole.println(pwrLeft + "|" + pwrRight);
+
                 leftMotor.setSpeed(pwrLeft);
                 rightMotor.setSpeed(pwrRight);
                 leftMotor.forward();
                 rightMotor.forward();
             }
+//            RConsole.close();
         }
 
     }
