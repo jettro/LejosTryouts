@@ -6,6 +6,7 @@ build
 */build
 # intellij files
 .idea/*
+*/.idea/*
 *.ipr
 *.iws
 *.iml

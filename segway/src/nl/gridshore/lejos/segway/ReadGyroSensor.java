@@ -1,3 +1,5 @@
+package nl.gridshore.lejos.segway;
+
 import lejos.nxt.Button;
 import lejos.nxt.SensorPort;
 import lejos.nxt.addon.GyroSensor;
